@@ -9,6 +9,8 @@ typedef signed int s32;
 typedef unsigned int u32;
 
 #define NULL (void*)0
+#define TRUE 1
+#define FALSE 0
 
 #define UNUSED __attribute__((unused))
 
@@ -26,5 +28,12 @@ typedef unsigned int u32;
 #define OVERFLOW O
 #define NEGATIVE N
 
+typedef struct {
+	void (*func)(u8, u8);
+	char nm[4];
+	u8 len;
+} Insn_6502;
+
+#define INSN_NULL {NULL, "NIL", 0}
 
 #endif

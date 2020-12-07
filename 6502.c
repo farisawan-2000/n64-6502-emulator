@@ -22,16 +22,18 @@ u8 a = 0;
 
 u32 cycle_timer = 0;
 
-#define VOID UNUSED u8 m, UNUSED u8 *reg
+#define VOID UNUSED u8 m, UNUSED u8 reg
+
+#define UPDATE_STATUS(cond, flag) {if(cond) set_status(flag); else clr_status(flag);}
+
 #define CYC(x) (x - 1)
 #define ZPG(x) ((x) & 0xFF)
 #include "6502.h"
-#include "vcs_core.inc"
+#include "vcs_core.inc.c"
 
 int ins_cycle_lookup[] = {
-	7, 6, 0, 0, 0, 3, 5, 0, 3, 2, 2
+	7, 6, 0, 0,   0, 3, 5, 0,   3, 2, 2, 0,   0, 4, 
 };
-
 
 // status helpers
 void set_status(u32 flag) {
@@ -46,32 +48,31 @@ void s_push(u8 x) {
 	vcs_mem_write_u8(sp--, x);
 }
 
-
 void ins_brk(VOID) { // 0x00
 	set_status(INTERRUPT);
 	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
 }
 
-void ins_ora_ind(u8 m, u8 *reg) { // 0x01
-	a |= vcs_mem_read_u8(m + *reg);
-	if (a >> 7) set_status(NEGATIVE);
-	if (!a) set_status(ZERO);
+void ins_ora_ind(u8 m, u8 reg) { // 0x01
+	a |= vcs_mem_read_u8(m + reg);
+	UPDATE_STATUS(a >> 7, NEGATIVE);
+	UPDATE_STATUS(!a, ZERO);
 	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
 }
 
-void ins_ora_zpg(u8 m, u8 *reg) { // 0x05
-	a |= vcs_mem_read_u8(ZPG(m + *reg));
-	if (a >> 7) set_status(NEGATIVE);
-	if (!a) set_status(ZERO);
+void ins_ora_zpg(u8 m, u8 reg) { // 0x05
+	a |= vcs_mem_read_u8(ZPG(m + reg));
+	UPDATE_STATUS(a >> 7, NEGATIVE);
+	UPDATE_STATUS(!a, ZERO);
 	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
 }
 
-void ins_asl_zpg(u8 m, UNUSED u8 *reg) { // 0x06
+void ins_asl_zpg(u8 m, UNUSED u8 reg) { // 0x06
 	u32 s = vcs_mem_read_u8(m);
 	if (a >> 7) set_status(CARRY);
-	a <<= vcs_mem_read_u8(ZPG(m + *reg));
-	if (a >> 7) set_status(NEGATIVE);
-	if (!a) set_status(ZERO);
+	a <<= vcs_mem_read_u8(ZPG(m + reg));
+	UPDATE_STATUS(a >> 7, NEGATIVE);
+	UPDATE_STATUS(!a, ZERO);
 	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
 }
 
@@ -80,43 +81,56 @@ void ins_php(VOID) { // 0x08
 	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
 }
 
-void ins_ora_imm(u8 m, UNUSED u8 *reg) { // 0x09
+void ins_ora_imm(u8 m, UNUSED u8 reg) { // 0x09
 	a |= m;
-	if (a >> 7) set_status(NEGATIVE);
-	if (!a) set_status(ZERO);
+	UPDATE_STATUS(a >> 7, NEGATIVE);
+	UPDATE_STATUS(!a, ZERO);
 	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
 }
 
-void ins_asl_acc(VOID) { // 0x06
+void ins_asl_acc(VOID) { // 0x0A
 	u32 s = vcs_mem_read_u8(m);
 	if (a >> 7) set_status(CARRY);
 	a <<= 1;
-	if (a >> 7) set_status(NEGATIVE);
-	if (!a) set_status(ZERO);
+	UPDATE_STATUS(a >> 7, NEGATIVE);
+	UPDATE_STATUS(!a, ZERO);
 	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
 }
 
-void (*ins_lookup[])(u8, u8 *) = {
-	ins_brk, ins_ora_ind, NULL, NULL, NULL,	ins_ora_zpg, ins_asl_zpg, NULL,	ins_php, ins_ora_imm, ins_asl_acc
-};
+void ins_ora_abs(u8 hi, u8 lo) {
+	a |= vcs_mem_read_u8((hi << 16) | lo);
 
-char ins_str[][5] = {
-	"BRK", "ORA", "NIL", "NIL", "NIL", "ORA", "ASL", "NIL",	"PHP", "ORA", "ASL"
-};
+	UPDATE_STATUS(a >> 7, NEGATIVE);
+	UPDATE_STATUS(!a, ZERO);
+	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+}
 
-int ins_len_lookup[] = {
-	1, 2, 0, 0, 0, 2, 2, 0, 1, 2, 1
-};
+Insn_6502 insn_array[] = {
+	/* 0x00 */ {ins_brk, "BRK", 1},
+	/* 0x01 */ {ins_ora_ind, "ORA", 2},
+	INSN_NULL,
+	INSN_NULL,
+	INSN_NULL,
+	/* 0x05 */ {ins_ora_zpg, "ORA", 2},
+	/* 0x06 */ {ins_asl_zpg, "ASL", 2},
+	INSN_NULL,
+	/* 0x08 */ {ins_php, "PHP", 1},
+	/* 0x09 */ {ins_ora_imm, "ORA", 2},
+	/* 0x0A */ {ins_asl_acc, "ASL", 1},
+	INSN_NULL,
+	INSN_NULL,
+	/* 0x0D */ {ins_ora_abs, "ORA", 3},
 
+};
 
 int run_one_cycle(void) {
 	if (cycle_timer > 0) cycle_timer--;
 	else {
-		printf("%04X: %02X %s\n", pc, vcs_rom[pc], ins_str[vcs_rom[pc]]);
+		printf("%04X: %02X %s\n", pc, vcs_rom[pc], insn_array[vcs_rom[pc]].nm);
 		if (vcs_rom[pc] == 0) return -1;
-		ins_lookup[vcs_rom[pc]](vcs_rom[pc + 1], &vcs_rom[pc + 2]);
-		printf("vars: a:%02X x:%02X y:%02X sp:%02X\n", a, x, y, sp);
-		pc += ins_len_lookup[vcs_rom[pc]];
+		insn_array[vcs_rom[pc]].func(vcs_rom[pc + 1], vcs_rom[pc + 2]);
+		printf("vars: a:%02X x:%02X y:%02X sp:%02X status: %02X\n", a, x, y, sp, status);
+		pc += insn_array[vcs_rom[pc]].len;
 	}
 	return 0;
 }
