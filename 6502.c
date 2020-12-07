@@ -28,12 +28,13 @@ u32 cycle_timer = 0;
 
 #define CYC(x) (x - 1)
 #define ZPG(x) ((x) & 0xFF)
+#define UPDATE_CYCLE_TIME() cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
 #include "6502.h"
 #include "vcs_core.inc.c"
 
 int ins_cycle_lookup[] = {
 	7, 6, 0, 0,   0, 3, 5, 0,   3, 2, 2, 0,   0, 4, 6, 0,
-	2, 5, 
+	2, 5, 0, 0,   0, 4, 6, 
 
 };
 
@@ -50,76 +51,78 @@ void clr_status(u32 flag) {
 
 // stack helpers
 void s_push(u8 x) {
-	vcs_mem_write_u8(sp--, x);
+	mem_write_u8(sp--, x);
 }
 
 void ins_brk(VOID) { // 0x00
 	set_status(INTERRUPT);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 void ins_ora_ind(u8 m, u8 reg) { // 0x01
-	a |= vcs_mem_read_u8(m + reg);
+	u16 addr = mem_read_u16((x + m) & 0xFF);
+	a |= mem_read_u8(addr);
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 void ins_ora_zpg(u8 m, u8 reg) { // 0x05
-	a |= m;
+	a |= mem_read_u8((x + m) & 0xFF);
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 void ins_asl_zpg(u8 m, UNUSED u8 reg) { // 0x06
-	u32 s = vcs_mem_read_u8(m);
-	if (a >> 7) set_status(CARRY);
-	a <<= vcs_mem_read_u8(ZPG(m + reg));
+	u32 s = mem_read_u8(m);
+	UPDATE_STATUS(a >> 7, CARRY);
+	a <<= 1;
+	mem_write_u8(m, a);
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 void ins_php(VOID) { // 0x08
 	s_push(status);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 void ins_ora_imm(u8 m, UNUSED u8 reg) { // 0x09
 	a |= m;
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 void ins_asl_acc(VOID) { // 0x0A
-	s8 s = vcs_mem_read_u8(m);
+	s8 s = mem_read_u8(m);
 	if (a >> 7) set_status(CARRY);
 	a <<= 1;
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 #define TO_U16(h, l) ((h << 16) | l)
 
 void ins_ora_abs(u8 hi, u8 lo) { // 0x0D
-	a |= vcs_mem_read_u8(TO_U16(hi, lo));
+	a |= mem_read_u8(TO_U16(hi, lo));
 
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 void ins_asl_abs(u8 hi, u8 lo) { // 0x0E
-	s8 s = vcs_mem_read_u8(TO_U16(hi, lo));
+	s8 s = mem_read_u8(TO_U16(hi, lo));
 	if (s >> 7) set_status(CARRY);
 	s <<= 1;
-	vcs_mem_write_u8(TO_U16(hi, lo), s);
+	mem_write_u8(TO_U16(hi, lo), s);
 	UPDATE_STATUS(s >> 7, NEGATIVE);
 	UPDATE_STATUS(!s, ZERO);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
 void ins_bpl(u8 offset, UNUSED u8 reg) {
@@ -132,15 +135,34 @@ void ins_bpl(u8 offset, UNUSED u8 reg) {
 		set_status(IS_BRANCH);
 		clr_status(NEGATIVE);
 	}
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
 }
 
-void ins_ora_abs(u8 hi, u8 lo) { // 0x0D
-	a |= vcs_mem_read_u8(TO_U16(hi, lo));
+void ins_ora_ind_y(u8 hi, u8 lo) { // 0x0D
+	a |= mem_read_u8(y + mem_read_u8(TO_U16(hi, lo)));
 
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+	UPDATE_CYCLE_TIME();
+}
+
+void ins_ora_zpg_x(u8 m, UNUSED u8 reg) { // 0x0D
+	a |= mem_read_u8(x + m);
+
+	UPDATE_STATUS(a >> 7, NEGATIVE);
+	UPDATE_STATUS(!a, ZERO);
+	UPDATE_CYCLE_TIME();
+}
+
+void ins_asl_zpg_x(u8 m, UNUSED u8 reg) { // 0x0D
+	s8 tmp = mem_read_u8(x + m);
+	UPDATE_STATUS(tmp >> 7, CARRY);
+	tmp <<= 1;
+	mem_write_u8(x + m, tmp);
+
+	UPDATE_STATUS(a >> 7, NEGATIVE);
+	UPDATE_STATUS(!a, ZERO);
+	UPDATE_CYCLE_TIME();
 }
 
 Insn_6502 insn_array[] = {
@@ -162,6 +184,11 @@ Insn_6502 insn_array[] = {
 	INSN_NULL,
 	/* 0x10 */ {ins_bpl, "BPL", 2},
 	/* 0x11 */ {ins_ora_ind_y, "ORA", 2},
+	INSN_NULL,
+	INSN_NULL,
+	INSN_NULL,
+	/* 0x15 */ {ins_ora_zpg_x, "ORA", 2},
+	/* 0x16 */ {ins_asl_zpg_x, "ASL", 2},
 };
 
 int run_one_cycle(void) {

@@ -57,3 +57,7 @@ void vcs_mem_write_u8(u32 addr, u8 dat) {
 	}
 }
 
+#define mem_read_u8 vcs_mem_read_u8
+#define mem_write_u8 vcs_mem_write_u8
+#define mem_read_u16 vcs_mem_read_u16
+
