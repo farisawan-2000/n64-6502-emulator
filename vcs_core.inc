@@ -6,7 +6,11 @@ void vcs_boot(u8 *rom) {
 u8 vcs_tia[0x80];
 u8 vcs_ram[0x80];
 u8 vcs_riot[0x80];
-u8 vcs_rom[0x1000];
+// u8 vcs_rom[0x1000];
+u8 vcs_rom[0x1000] = {
+	0x09, 0x01, 0x09, 0x02, 0x0A, 0x00
+};
+
 
 u8 vcs_mem_read_u8(u32 addr) {
 	if (addr < 0x80) {
@@ -38,8 +42,7 @@ u16 vcs_mem_read_u16(u32 addr) {
 	}
 }
 
-
-void vcs_mem_write(u32 addr, u8 dat) {
+void vcs_mem_write_u8(u32 addr, u8 dat) {
 	if (addr < 0x80) {
 		vcs_tia[addr] = dat;
 	}

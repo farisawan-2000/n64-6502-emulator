@@ -14,7 +14,6 @@
 
 //             IFNCONST TIA_BASE_ADDRESS
 #define TIA_BASE_ADDRESS     0
-            ENDIF
 
 // ; Note: The address may be defined on the command-line using the -D switch, eg:
 // ; dasm.exe code.asm -DTIA_BASE_ADDRESS=$40 -f3 -v5 -ocode.bin

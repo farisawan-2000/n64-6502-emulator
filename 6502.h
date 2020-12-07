@@ -8,6 +8,10 @@ typedef signed short s16;
 typedef signed int s32;
 typedef unsigned int u32;
 
+#define NULL (void*)0
+
+#define UNUSED __attribute__((unused))
+
 #define C 0
 #define Z 1
 #define I 2
