@@ -18,6 +18,7 @@ typedef unsigned int u32;
 #define Z 1
 #define I 2
 #define D 3
+#define IS_BRANCH 4
 #define O 6
 #define N 7
 
