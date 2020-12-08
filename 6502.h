@@ -19,14 +19,14 @@ typedef unsigned int u32;
 #define I 2
 #define D 3
 #define IS_BRANCH 4
-#define O 6
+#define V 6
 #define N 7
 
 #define CARRY C
 #define ZERO Z
 #define INTERRUPT I
 #define DECIMAL D
-#define OVERFLOW O
+#define OVERFLOW V
 #define NEGATIVE N
 
 #define SET 1

@@ -34,7 +34,6 @@ u32 cycle_timer = 0;
 
 #define CYC(x) (x - 1)
 #define ZPG(x) ((x) & 0xFF)
-#define UPDATE_CYCLE_TIME() cycle_timer = CYC(insn_array[vcs_rom[pc]].cycles);
 #include "6502.h"
 #include "vcs_core.inc.c"
 
@@ -91,7 +90,7 @@ void ins_ora(u8 opcode, u8 hi, u8 lo, status_t status) {
 
     switch (opcode) {
         case 0x01:
-            mem = mem_read_u16((x + hi) & 0xFF);
+            mem = mem_read_u8(mem_read_u16((x + hi) & 0xFF));
             break;
         case 0x05:
             mem = mem_read_u8((x + hi) & 0xFF);
@@ -187,6 +186,33 @@ void ins_jsr(UNUSED u8 opcode, u8 hi, u8 lo, status_t status) {
     pc = TO_U16(hi, lo);
 }
 
+void ins_and(u8 opcode, u8 hi, u8 lo, status_t status) {
+    u8 mem;
+
+    switch (opcode) {
+        case 0x21:
+            mem = mem_read_u8(mem_read_u16((x + hi) & 0xFF));
+            break;
+    }
+
+    a &= mem;
+    UPDATE_STATUS(a >> 7, NEGATIVE);
+    UPDATE_STATUS(!a, ZERO);
+}
+
+void ins_bit(u8 opcode, u8 hi, u8 lo, status_t status) {
+    u8 mem;
+    u8 acc = a;
+    switch (opcode) {
+        case 0x24:
+            mem = mem_read_u8(hi);
+            break;
+    }
+    UPDATE_STATUS((mem >> 6) & 1, OVERFLOW);
+    UPDATE_STATUS((mem >> 7) & 1, NEGATIVE);
+    UPDATE_STATUS(mem & acc, ZERO);
+}
+
 Insn_6502 insn_array[] = {
     /* 0x00 */ {0x00, ins_brk, "BRK", 1, SET_STATUS(I), 7},
     /* 0x01 */ {0x01, ins_ora, "ORA", 2, SET_STATUS(N) | SET_STATUS(Z), 6},
@@ -221,23 +247,27 @@ Insn_6502 insn_array[] = {
     /* 0x1E */ {0x1E, ins_asl, "ASL", 3, SET_STATUS(N) | SET_STATUS(Z) | SET_STATUS(C), 7},
     INSN_NULL,
     /* 0x20 */ {0x20, ins_jsr, "JSR", 3, NO_STATUS, 6},
+    /* 0x21 */ {0x21, ins_and, "AND", 2, SET_STATUS(N) | SET_STATUS(Z), 6},
+    INSN_NULL,
+    INSN_NULL,
+    /* 0x24 */ {0x24, ins_bit, "BIT", 2, SET_STATUS(Z), 3},
 
 
 };
 
-int run_one_cycle(void) {
+int run_one_cycle(u8 *game_rom) {
     if (cycle_timer > 0) cycle_timer--;
     else {
-        printf("%04X: %02X %s %02X\n", pc, vcs_rom[pc], insn_array[vcs_rom[pc]].nm, vcs_rom[pc + 1]);
-        if (vcs_rom[pc] == 0x02) return -1;
-        if (insn_array[vcs_rom[pc]].func != NULL) {
-            insn_array[vcs_rom[pc]].func(
-                vcs_rom[pc],
-                vcs_rom[pc + 1],
-                vcs_rom[pc + 2],
-                insn_array[vcs_rom[pc]].status
+        printf("%04X: %02X %s %02X\n", pc, game_rom[pc], insn_array[game_rom[pc]].nm, game_rom[pc + 1]);
+        if (game_rom[pc] == 0x02) return -1;
+        if (insn_array[game_rom[pc]].func != NULL) {
+            insn_array[game_rom[pc]].func(
+                game_rom[pc],
+                game_rom[pc + 1],
+                game_rom[pc + 2],
+                insn_array[game_rom[pc]].status
                 );
-            UPDATE_CYCLE_TIME();
+            cycle_timer += CYC(insn_array[game_rom[pc]].cycles);
         } else {
             printf("Invalid Instruction\n");
         }
@@ -246,7 +276,7 @@ int run_one_cycle(void) {
             clear_status(IS_BRANCH);
             // printf("%04X\n", pc);
         } else {
-            pc += insn_array[vcs_rom[pc]].len;
+            pc += insn_array[game_rom[pc]].len;
         }
     }
     return 0;
@@ -255,7 +285,7 @@ int run_one_cycle(void) {
 int main(void) {
     vcs_boot(vcs_rom);
     while (1) {
-        if (run_one_cycle() != 0) break;
+        if (run_one_cycle(vcs_rom) != 0) break;
     }
 }
 
