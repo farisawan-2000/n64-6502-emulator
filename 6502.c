@@ -22,7 +22,7 @@ u8 a = 0;
 
 u32 cycle_timer = 0;
 
-#define VOID UNUSED u8 m, UNUSED u8 reg
+
 
 #define UPDATE_STATUS(cond, flag) {if(cond) set_status(flag); else clear_status(flag);}
 
@@ -44,93 +44,109 @@ void clear_status(u32 flag) {
     status &= ~(1 << flag);
 }
 
-void upd_status(status_t flag) {
-    status_t tmp;
-    u32 shift = 0;
-    while (tmp != NO_STATUS) {
-        if (shift != CARRY) { // TODO: figure out how to handle carries here
-            if (tmp & STATUS_MASK) {
-                if ((tmp & STATUS_MASK) == SET) {
-                    set_status(shift);
-                }
-                else if ((tmp & STATUS_MASK) == SET) {
-                    clear_status(shift);
-                }
-            }
-        }
-        tmp >>= STAT_FLAG_LENGTH;
-        shift++;
-    }
-}
+// TODO: figure out if we even want this function!
+// void upd_status(status_t flag) {
+//     status_t tmp;
+//     u32 shift = 0;
+//     while (tmp != NO_STATUS) {
+//         if (shift != CARRY) { // TODO: figure out how to handle carries here
+//             if (tmp & STATUS_MASK) {
+//                 if ((tmp & STATUS_MASK) == SET) {
+//                     set_status(shift);
+//                 }
+//                 else if ((tmp & STATUS_MASK) == SET) {
+//                     clear_status(shift);
+//                 }
+//             }
+//         }
+//         tmp >>= STAT_FLAG_LENGTH;
+//         shift++;
+//     }
+// }
 
 // stack helpers
 void s_push(u8 x) {
     mem_write_u8(sp--, x);
+}
+u8 s_pop(void) {
+    return mem_read_u8(++sp);
 }
 
 void ins_brk(VOID) { // 0x00
     set_status(INTERRUPT);
 }
 
-// void ins_ora_ind(u8 m, u8 reg) { // 0x01
-//  u16 addr = mem_read_u16((x + m) & 0xFF);
-//  a |= mem_read_u8(addr);
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
-
-// void ins_ora_zpg(u8 m, u8 reg) { // 0x05
-//  a |= mem_read_u8((x + m) & 0xFF);
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
-
-// void ins_asl_zpg(u8 m, UNUSED u8 reg) { // 0x06
-//  u32 s = mem_read_u8(m);
-//  UPDATE_STATUS(a >> 7, CARRY);
-//  a <<= 1;
-//  mem_write_u8(m, a);
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
-
 void ins_php(VOID) { // 0x08
     s_push(status);
 }
 
-// void ins_ora_imm(u8 m, UNUSED u8 reg) { // 0x09
-//  a |= m;
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
+void ins_ora(u8 opcode, u8 hi, u8 lo, status_t status) {
+    u8 mem;
 
-// void ins_asl_acc(VOID) { // 0x0A
-//  s8 s = mem_read_u8(m);
-//  if (a >> 7) set_status(CARRY);
-//  a <<= 1;
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
+    switch (opcode) {
+        case 0x01:
+            mem = mem_read_u16((x + hi) & 0xFF);
+            break;
+        case 0x05:
+            mem = mem_read_u8((x + hi) & 0xFF);
+            break;
+        case 0x09:
+            mem = hi;
+            break;
+        case 0x0D:
+            mem = mem_read_u8(TO_U16(hi, lo));
+            break;
+        case 0x11:
+            mem = mem_read_u8(y + mem_read_u8(TO_U16(hi, lo)));
+            break;
+        case 0x15:
+            mem = mem_read_u8(x + hi);
+            break;
+    }
 
-#define TO_U16(h, l) ((h << 16) | l)
+    a |= mem;
+    UPDATE_STATUS(a >> 7, NEGATIVE);
+    UPDATE_STATUS(!a, ZERO);
+}
 
-// void ins_ora_abs(u8 hi, u8 lo) { // 0x0D
-//  a |= mem_read_u8(TO_U16(hi, lo));
+void ins_asl(u8 opcode, u8 hi, u8 lo, status_t status) {
+    u8 temp;
 
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
+    switch (opcode) {
+        case 0x06:
+            temp = mem_read_u8(hi);
+            break;
+        case 0x0A:
+            temp = a;
+            break;
+        case 0x0E:
+            temp = mem_read_u8(TO_U16(hi, lo));
+            break;
+        case 0x16:
+            temp = mem_read_u8(x + hi);
+            break;
+    }
+    UPDATE_STATUS(temp >> 7, CARRY);
+    temp <<= 1;
+    switch (opcode) {
+        case 0x06:
+            mem_write_u8(hi, temp);
+            break;
+        case 0x0A:
+            a = temp;
+            break;
+        case 0x0E:
+            mem_write_u8(TO_U16(hi, lo), temp);
+            break;
+        case 0x16:
+            mem_write_u8(x + hi, temp);
+            break;
+    }
+    UPDATE_STATUS(temp >> 7, NEGATIVE);
+    UPDATE_STATUS(!temp, ZERO);
+}
 
-// void ins_asl_abs(u8 hi, u8 lo) { // 0x0E
-//  s8 s = mem_read_u8(TO_U16(hi, lo));
-//  if (s >> 7) set_status(CARRY);
-//  s <<= 1;
-//  mem_write_u8(TO_U16(hi, lo), s);
-//  UPDATE_STATUS(s >> 7, NEGATIVE);
-//  UPDATE_STATUS(!s, ZERO);
-// }
-
-void ins_bpl(u8 offset, UNUSED u8 reg) {
+void ins_bpl(UNUSED u8 opcode, u8 offset, UNUSED u8 byte_2, status_t status) {
     if (get_status(NEGATIVE) == 0) {
         if ((offset >> 7) == 1)
             pc -= ((~(offset) - 1) & 0xFF);
@@ -141,31 +157,6 @@ void ins_bpl(u8 offset, UNUSED u8 reg) {
         clear_status(NEGATIVE);
     }
 }
-
-// void ins_ora_ind_y(u8 hi, u8 lo) { // 0x0D
-//  a |= mem_read_u8(y + mem_read_u8(TO_U16(hi, lo)));
-
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
-
-// void ins_ora_zpg_x(u8 m, UNUSED u8 reg) { // 0x0D
-//  a |= mem_read_u8(x + m);
-
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
-
-// void ins_asl_zpg_x(u8 m, UNUSED u8 reg) { // 0x0D
-//  s8 tmp = mem_read_u8(x + m);
-//  UPDATE_STATUS(tmp >> 7, CARRY);
-//  tmp <<= 1;
-//  mem_write_u8(x + m, tmp);
-
-//  UPDATE_STATUS(a >> 7, NEGATIVE);
-//  UPDATE_STATUS(!a, ZERO);
-// }
-
 
 Insn_6502 insn_array[] = {
     /* 0x00 */ {0x00, ins_brk, "BRK", 1, SET_STATUS(I), 7},
@@ -191,6 +182,8 @@ Insn_6502 insn_array[] = {
     INSN_NULL,
     /* 0x15 */ {0x15, ins_ora, "ORA", 2, SET_STATUS(N) | SET_STATUS(Z), 4},
     /* 0x16 */ {0x16, ins_asl, "ASL", 2, SET_STATUS(N) | SET_STATUS(Z) | SET_STATUS(C), 6},
+    INSN_NULL,
+
 };
 
 int run_one_cycle(void) {
@@ -198,15 +191,15 @@ int run_one_cycle(void) {
     else {
         printf("%04X: %02X %s %02X\n", pc, vcs_rom[pc], insn_array[vcs_rom[pc]].nm, vcs_rom[pc + 1]);
         if (vcs_rom[pc] == 0) return -1;
-        if (insn_array[vcs_rom[pc]].func != NULL)
+        if (insn_array[vcs_rom[pc]].func != NULL) {
             insn_array[vcs_rom[pc]].func(
                 vcs_rom[pc],
                 vcs_rom[pc + 1],
                 vcs_rom[pc + 2],
-                insn_array[vcs_rom[pc]].status,
-                insn_array[vcs_rom[pc]].cycles);
+                insn_array[vcs_rom[pc]].status
+                );
             UPDATE_CYCLE_TIME();
-        else {
+        } else {
             printf("Invalid Instruction\n");
         }
         printf("vars: a:%02X x:%02X y:%02X sp:%02X status: %02X\n", a, x, y, sp, status);

@@ -35,13 +35,13 @@ typedef unsigned int u32;
 #define CLEAR_STATUS(x) (CLEAR << x)
 #define NO_STATUS 0
 
-typedef u16 status_t;
+typedef UNUSED u16 status_t;
 #define STAT_FLAG_LENGTH 2
 #define STATUS_MASK 3
 
 typedef struct {
     u8 opcode;
-    void (*func)(u8, u8);
+    void (*func)(u8 opcode, u8 hi, u8 lo, status_t status);
     char nm[4];
     u8 len;
     status_t status;
@@ -49,5 +49,9 @@ typedef struct {
 } Insn_6502;
 
 #define INSN_NULL {0x00, NULL, "NIL", 0, 0, 0}
+
+// helpers
+#define TO_U16(h, l) ((h << 16) | l)
+#define VOID UNUSED u8 opcode, UNUSED u8 hi, UNUSED u8 lo, UNUSED status_t status
 
 #endif
