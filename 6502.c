@@ -1,6 +1,12 @@
 #include "vcs.h"
 #include "6502.h"
 
+#ifndef TARGET_N64
+#include <stdio.h>
+#else
+#define printf(...)
+#endif
+
 // the 3 registers
 u16 pc = 0;
 u8 sp = 0;
@@ -102,6 +108,12 @@ void ins_ora(u8 opcode, u8 hi, u8 lo, status_t status) {
         case 0x15:
             mem = mem_read_u8(x + hi);
             break;
+        case 0x19:
+            mem = mem_read_u8(y + TO_U16(hi, lo));
+            break;
+        case 0x1D:
+            mem = mem_read_u8(x + TO_U16(hi, lo));
+            break;
     }
 
     a |= mem;
@@ -125,6 +137,9 @@ void ins_asl(u8 opcode, u8 hi, u8 lo, status_t status) {
         case 0x16:
             temp = mem_read_u8(x + hi);
             break;
+        case 0x1E:
+            temp = mem_read_u8(x + TO_U16(hi, lo));
+            break;
     }
     UPDATE_STATUS(temp >> 7, CARRY);
     temp <<= 1;
@@ -141,6 +156,9 @@ void ins_asl(u8 opcode, u8 hi, u8 lo, status_t status) {
         case 0x16:
             mem_write_u8(x + hi, temp);
             break;
+        case 0x1E:
+            mem_write_u8(x + TO_U16(hi, lo), temp);
+            break;
     }
     UPDATE_STATUS(temp >> 7, NEGATIVE);
     UPDATE_STATUS(!temp, ZERO);
@@ -156,6 +174,17 @@ void ins_bpl(UNUSED u8 opcode, u8 offset, UNUSED u8 byte_2, status_t status) {
         set_status(IS_BRANCH);
         clear_status(NEGATIVE);
     }
+}
+
+void ins_clc(VOID) {
+    clear_status(CARRY);
+}
+
+void ins_jsr(UNUSED u8 opcode, u8 hi, u8 lo, status_t status) {
+    // s_push(status);
+    s_push((pc + 2) >> 16);
+    s_push((pc + 2) & 0xFF);
+    pc = TO_U16(hi, lo);
 }
 
 Insn_6502 insn_array[] = {
@@ -183,6 +212,16 @@ Insn_6502 insn_array[] = {
     /* 0x15 */ {0x15, ins_ora, "ORA", 2, SET_STATUS(N) | SET_STATUS(Z), 4},
     /* 0x16 */ {0x16, ins_asl, "ASL", 2, SET_STATUS(N) | SET_STATUS(Z) | SET_STATUS(C), 6},
     INSN_NULL,
+    /* 0x18 */ {0x18, ins_clc, "CLC", 1, CLEAR_STATUS(C), 2},
+    /* 0x19 */ {0x19, ins_ora, "ORA", 3, SET_STATUS(N) | SET_STATUS(Z), 4},
+    INSN_NULL,
+    INSN_NULL,
+    INSN_NULL,
+    /* 0x1D */ {0x1D, ins_ora, "ORA", 3, SET_STATUS(N) | SET_STATUS(Z), 4},
+    /* 0x1E */ {0x1E, ins_asl, "ASL", 3, SET_STATUS(N) | SET_STATUS(Z) | SET_STATUS(C), 7},
+    INSN_NULL,
+    /* 0x20 */ {0x20, ins_jsr, "JSR", 3, NO_STATUS, 6},
+
 
 };
 
@@ -190,7 +229,7 @@ int run_one_cycle(void) {
     if (cycle_timer > 0) cycle_timer--;
     else {
         printf("%04X: %02X %s %02X\n", pc, vcs_rom[pc], insn_array[vcs_rom[pc]].nm, vcs_rom[pc + 1]);
-        if (vcs_rom[pc] == 0) return -1;
+        if (vcs_rom[pc] == 0x02) return -1;
         if (insn_array[vcs_rom[pc]].func != NULL) {
             insn_array[vcs_rom[pc]].func(
                 vcs_rom[pc],
