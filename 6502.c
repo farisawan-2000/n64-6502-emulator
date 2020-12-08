@@ -199,6 +199,9 @@ void ins_and(u8 opcode, u8 hi, u8 lo, status_t status) {
         case INS_AND_IMM:
             mem = hi;
             break;
+        case INS_AND_ABS:
+            mem = mem_read_u8(TO_U16(hi, lo));
+            break;
     }
 
     a &= mem;
@@ -210,9 +213,11 @@ void ins_bit(u8 opcode, u8 hi, u8 lo, status_t status) {
     u8 mem;
     u8 acc = a;
     switch (opcode) {
-        case 0x24:
+        case INS_BIT_ZPG:
             mem = mem_read_u8(hi);
             break;
+        case INS_BIT_ABS:
+            mem = mem_read_u8(TO_U16(hi, lo));
     }
     UPDATE_STATUS((mem >> 6) & 1, OVERFLOW);
     UPDATE_STATUS((mem >> 7) & 1, NEGATIVE);
@@ -229,6 +234,9 @@ void ins_rol(u8 opcode, u8 hi, u8 lo, status_t status) {
         case INS_ROL_ACC:
             mem = a;
             break;
+        case INS_ROL_ABS:
+            mem = mem_read_u8(TO_U16(hi, lo));
+            break;
     }
 
     UPDATE_STATUS(mem >> 7, CARRY);
@@ -242,6 +250,9 @@ void ins_rol(u8 opcode, u8 hi, u8 lo, status_t status) {
             break;
         case INS_ROL_ACC:
             a = (u8) mem;
+            break;
+        case INS_ROL_ABS:
+            mem_write_u8(TO_U16(hi, lo), mem);
             break;
     }
 }
@@ -294,6 +305,12 @@ Insn_6502 insn_array[] = {
     /* 0x28 */ {0x28, ins_plp, "PLP", 1, NO_STATUS, 4},
     /* 0x29 */ {0x29, ins_and, "AND", 2, SET_STATUS(N) | SET_STATUS(Z), 2},
     /* 0x2A */ {0x2A, ins_rol, "ROL", 2, SET_STATUS(N) | SET_STATUS(Z) | SET_STATUS(C), 2},
+    INSN_NULL,
+    /* 0x2C */ {0x2C, ins_bit, "BIT", 3, SET_STATUS(Z), 4},
+    /* 0x2D */ {0x2D, ins_and, "AND", 3, SET_STATUS(N) | SET_STATUS(Z), 4},
+    /* 0x2E */ {0x2E, ins_rol, "ROL", 3, SET_STATUS(N) | SET_STATUS(Z) | SET_STATUS(C), 6},
+    INSN_NULL,
+
 
 };
 
