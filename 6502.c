@@ -24,19 +24,14 @@ u32 cycle_timer = 0;
 
 #define VOID UNUSED u8 m, UNUSED u8 reg
 
-#define UPDATE_STATUS(cond, flag) {if(cond) set_status(flag); else clr_status(flag);}
+#define UPDATE_STATUS(cond, flag) {if(cond) set_status(flag); else clear_status(flag);}
 
 #define CYC(x) (x - 1)
 #define ZPG(x) ((x) & 0xFF)
-#define UPDATE_CYCLE_TIME() cycle_timer = CYC(ins_cycle_lookup[vcs_rom[pc]]);
+#define UPDATE_CYCLE_TIME() cycle_timer = CYC(insn_array[vcs_rom[pc]].cycles);
 #include "6502.h"
 #include "vcs_core.inc.c"
 
-int ins_cycle_lookup[] = {
-	7, 6, 0, 0,   0, 3, 5, 0,   3, 2, 2, 0,   0, 4, 6, 0,
-	2, 5, 0, 0,   0, 4, 6, 
-
-};
 
 // status helpers
 void set_status(u32 flag) {
@@ -45,8 +40,27 @@ void set_status(u32 flag) {
 u8 get_status(u32 flag) {
 	return (status >> flag) & 1;
 }
-void clr_status(u32 flag) {
+void clear_status(u32 flag) {
 	status &= ~(1 << flag);
+}
+
+void upd_status(status_t flag) {
+	status_t tmp;
+	u32 shift = 0;
+	while (tmp != NO_STATUS) {
+		if (shift != CARRY) { // TODO: figure out how to handle carries here
+			if (tmp & STATUS_MASK) {
+				if ((tmp & STATUS_MASK) == SET) {
+					set_status(shift);
+				}
+				else if ((tmp & STATUS_MASK) == SET) {
+					clear_status(shift);
+				}
+			}
+		}
+		tmp >>= STAT_FLAG_LENGTH;
+		shift++;
+	}
 }
 
 // stack helpers
@@ -56,7 +70,6 @@ void s_push(u8 x) {
 
 void ins_brk(VOID) { // 0x00
 	set_status(INTERRUPT);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_ora_ind(u8 m, u8 reg) { // 0x01
@@ -64,14 +77,12 @@ void ins_ora_ind(u8 m, u8 reg) { // 0x01
 	a |= mem_read_u8(addr);
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_ora_zpg(u8 m, u8 reg) { // 0x05
 	a |= mem_read_u8((x + m) & 0xFF);
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_asl_zpg(u8 m, UNUSED u8 reg) { // 0x06
@@ -81,19 +92,16 @@ void ins_asl_zpg(u8 m, UNUSED u8 reg) { // 0x06
 	mem_write_u8(m, a);
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_php(VOID) { // 0x08
 	s_push(status);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_ora_imm(u8 m, UNUSED u8 reg) { // 0x09
 	a |= m;
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_asl_acc(VOID) { // 0x0A
@@ -102,7 +110,6 @@ void ins_asl_acc(VOID) { // 0x0A
 	a <<= 1;
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 #define TO_U16(h, l) ((h << 16) | l)
@@ -112,7 +119,6 @@ void ins_ora_abs(u8 hi, u8 lo) { // 0x0D
 
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_asl_abs(u8 hi, u8 lo) { // 0x0E
@@ -122,7 +128,6 @@ void ins_asl_abs(u8 hi, u8 lo) { // 0x0E
 	mem_write_u8(TO_U16(hi, lo), s);
 	UPDATE_STATUS(s >> 7, NEGATIVE);
 	UPDATE_STATUS(!s, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_bpl(u8 offset, UNUSED u8 reg) {
@@ -133,9 +138,8 @@ void ins_bpl(u8 offset, UNUSED u8 reg) {
 			pc += offset;
 		// pc = 0;
 		set_status(IS_BRANCH);
-		clr_status(NEGATIVE);
+		clear_status(NEGATIVE);
 	}
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_ora_ind_y(u8 hi, u8 lo) { // 0x0D
@@ -143,7 +147,6 @@ void ins_ora_ind_y(u8 hi, u8 lo) { // 0x0D
 
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_ora_zpg_x(u8 m, UNUSED u8 reg) { // 0x0D
@@ -151,7 +154,6 @@ void ins_ora_zpg_x(u8 m, UNUSED u8 reg) { // 0x0D
 
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
 void ins_asl_zpg_x(u8 m, UNUSED u8 reg) { // 0x0D
@@ -162,33 +164,33 @@ void ins_asl_zpg_x(u8 m, UNUSED u8 reg) { // 0x0D
 
 	UPDATE_STATUS(a >> 7, NEGATIVE);
 	UPDATE_STATUS(!a, ZERO);
-	UPDATE_CYCLE_TIME();
 }
 
+
 Insn_6502 insn_array[] = {
-	/* 0x00 */ {ins_brk, "BRK", 1},
-	/* 0x01 */ {ins_ora_ind, "ORA", 2},
+	/* 0x00 */ {0x00, ins_brk, "BRK", 1, SET_STATUS(INTERRUPT), 7},
+	/* 0x01 */ {0x01, ins_ora, "ORA", 2, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO), 6},
 	INSN_NULL,
 	INSN_NULL,
 	INSN_NULL,
-	/* 0x05 */ {ins_ora_zpg, "ORA", 2},
-	/* 0x06 */ {ins_asl_zpg, "ASL", 2},
+	/* 0x05 */ {0x05, ins_ora, "ORA", 2, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO), 3},
+	/* 0x06 */ {0x06, ins_asl, "ASL", 2, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO) | SET_STATUS(CARRY), 5},
 	INSN_NULL,
-	/* 0x08 */ {ins_php, "PHP", 1},
-	/* 0x09 */ {ins_ora_imm, "ORA", 2},
-	/* 0x0A */ {ins_asl_acc, "ASL", 1},
-	INSN_NULL,
-	INSN_NULL,
-	/* 0x0D */ {ins_ora_abs, "ORA", 3},
-	/* 0x0E */ {ins_asl_abs, "ASL", 3},
-	INSN_NULL,
-	/* 0x10 */ {ins_bpl, "BPL", 2},
-	/* 0x11 */ {ins_ora_ind_y, "ORA", 2},
+	/* 0x08 */ {0x08, ins_php, "PHP", 1, NO_STATUS, 3},
+	/* 0x09 */ {0x09, ins_ora, "ORA", 2, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO), 2},
+	/* 0x0A */ {0x0A, ins_asl, "ASL", 1, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO) | SET_STATUS(CARRY), 2},
 	INSN_NULL,
 	INSN_NULL,
+	/* 0x0D */ {0x0D, ins_ora, "ORA", 3, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO), 4},
+	/* 0x0E */ {0x0E, ins_asl, "ASL", 3, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO) | SET_STATUS(CARRY), 6},
 	INSN_NULL,
-	/* 0x15 */ {ins_ora_zpg_x, "ORA", 2},
-	/* 0x16 */ {ins_asl_zpg_x, "ASL", 2},
+	/* 0x10 */ {0x10, ins_bpl, "BPL", 2, NO_STATUS, 2},
+	/* 0x11 */ {0x11, ins_ora, "ORA", 2, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO), 5},
+	INSN_NULL,
+	INSN_NULL,
+	INSN_NULL,
+	/* 0x15 */ {0x15, ins_ora, "ORA", 2, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO), 4},
+	/* 0x16 */ {0x16, ins_asl, "ASL", 2, SET_STATUS(NEGATIVE) | SET_STATUS(ZERO) | SET_STATUS(CARRY), 6},
 };
 
 int run_one_cycle(void) {
@@ -197,13 +199,19 @@ int run_one_cycle(void) {
 		printf("%04X: %02X %s %02X\n", pc, vcs_rom[pc], insn_array[vcs_rom[pc]].nm, vcs_rom[pc + 1]);
 		if (vcs_rom[pc] == 0) return -1;
 		if (insn_array[vcs_rom[pc]].func != NULL)
-			insn_array[vcs_rom[pc]].func(vcs_rom[pc + 1], vcs_rom[pc + 2]);
+			insn_array[vcs_rom[pc]].func(
+				vcs_rom[pc],
+				vcs_rom[pc + 1],
+				vcs_rom[pc + 2],
+				insn_array[vcs_rom[pc]].status,
+				insn_array[vcs_rom[pc]].cycles);
+			UPDATE_CYCLE_TIME();
 		else {
 			printf("Invalid Instruction\n");
 		}
 		printf("vars: a:%02X x:%02X y:%02X sp:%02X status: %02X\n", a, x, y, sp, status);
 		if (get_status(IS_BRANCH)) {
-			clr_status(IS_BRANCH);
+			clear_status(IS_BRANCH);
 			// printf("%04X\n", pc);
 		} else {
 			pc += insn_array[vcs_rom[pc]].len;

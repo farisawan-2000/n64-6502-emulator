@@ -29,12 +29,25 @@ typedef unsigned int u32;
 #define OVERFLOW O
 #define NEGATIVE N
 
+#define SET 1
+#define CLEAR 2
+#define SET_STATUS(x) (SET << x)
+#define CLEAR_STATUS(x) (CLEAR << x)
+#define NO_STATUS 0
+
+typedef u16 status_t;
+#define STAT_FLAG_LENGTH 2
+#define STATUS_MASK 3
+
 typedef struct {
+	u8 opcode;
 	void (*func)(u8, u8);
 	char nm[4];
 	u8 len;
+	status_t status;
+	u8 cycles;
 } Insn_6502;
 
-#define INSN_NULL {NULL, "NIL", 0}
+#define INSN_NULL {0x00, NULL, "NIL", 0, 0, 0}
 
 #endif
