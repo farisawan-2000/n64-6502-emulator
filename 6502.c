@@ -89,28 +89,28 @@ void ins_ora(u8 opcode, u8 hi, u8 lo, status_t status) {
     u8 mem;
 
     switch (opcode) {
-        case 0x01:
+        case INS_ORA_IND_X:
             mem = mem_read_u8(mem_read_u16((x + hi) & 0xFF));
             break;
-        case 0x05:
+        case INS_ORA_ZPG:
             mem = mem_read_u8((x + hi) & 0xFF);
             break;
-        case 0x09:
+        case INS_ORA_IMM:
             mem = hi;
             break;
-        case 0x0D:
+        case INS_ORA_ABS:
             mem = mem_read_u8(TO_U16(hi, lo));
             break;
-        case 0x11:
+        case INS_ORA_IND_Y:
             mem = mem_read_u8(y + mem_read_u8(TO_U16(hi, lo)));
             break;
-        case 0x15:
+        case INS_ORA_ZPG_X:
             mem = mem_read_u8(x + hi);
             break;
-        case 0x19:
+        case INS_ORA_ABS_Y:
             mem = mem_read_u8(y + TO_U16(hi, lo));
             break;
-        case 0x1D:
+        case INS_ORA_ABS_X:
             mem = mem_read_u8(x + TO_U16(hi, lo));
             break;
     }
@@ -124,38 +124,38 @@ void ins_asl(u8 opcode, u8 hi, u8 lo, status_t status) {
     u8 temp;
 
     switch (opcode) {
-        case 0x06:
+        case INS_ASL_ZPG:
             temp = mem_read_u8(hi);
             break;
-        case 0x0A:
+        case INS_ASL_ACC:
             temp = a;
             break;
-        case 0x0E:
+        case INS_ASL_ABS:
             temp = mem_read_u8(TO_U16(hi, lo));
             break;
-        case 0x16:
+        case INS_ASL_ZPG_X:
             temp = mem_read_u8(x + hi);
             break;
-        case 0x1E:
+        case INS_ASL_ABS_X:
             temp = mem_read_u8(x + TO_U16(hi, lo));
             break;
     }
     UPDATE_STATUS(temp >> 7, CARRY);
     temp <<= 1;
     switch (opcode) {
-        case 0x06:
+        case INS_ASL_ZPG:
             mem_write_u8(hi, temp);
             break;
-        case 0x0A:
+        case INS_ASL_ACC:
             a = temp;
             break;
-        case 0x0E:
+        case INS_ASL_ABS:
             mem_write_u8(TO_U16(hi, lo), temp);
             break;
-        case 0x16:
+        case INS_ASL_ZPG_X:
             mem_write_u8(x + hi, temp);
             break;
-        case 0x1E:
+        case INS_ASL_ABS_X:
             mem_write_u8(x + TO_U16(hi, lo), temp);
             break;
     }
@@ -190,8 +190,14 @@ void ins_and(u8 opcode, u8 hi, u8 lo, status_t status) {
     u8 mem;
 
     switch (opcode) {
-        case 0x21:
+        case INS_AND_IND_X:
             mem = mem_read_u8(mem_read_u16((x + hi) & 0xFF));
+            break;
+        case INS_AND_ZPG:
+            mem = mem_read_u8(hi);
+            break;
+        case INS_AND_IMM:
+            mem = hi;
             break;
     }
 
@@ -211,6 +217,37 @@ void ins_bit(u8 opcode, u8 hi, u8 lo, status_t status) {
     UPDATE_STATUS((mem >> 6) & 1, OVERFLOW);
     UPDATE_STATUS((mem >> 7) & 1, NEGATIVE);
     UPDATE_STATUS(mem & acc, ZERO);
+}
+
+void ins_rol(u8 opcode, u8 hi, u8 lo, status_t status) {
+    u16 mem;
+
+    switch (opcode) {
+        case INS_ROL_ZPG:
+            mem = mem_read_u8(hi);
+            break;
+        case INS_ROL_ACC:
+            mem = a;
+            break;
+    }
+
+    UPDATE_STATUS(mem >> 7, CARRY);
+    mem <<= 1;
+    if (mem >> 8) mem |= 1;
+    mem &= 0xFF;
+
+    switch (opcode) {
+        case INS_ROL_ZPG:
+            mem_write_u8(hi, (u8) mem);
+            break;
+        case INS_ROL_ACC:
+            a = (u8) mem;
+            break;
+    }
+}
+
+void ins_plp(VOID) {
+    status = s_pop();
 }
 
 Insn_6502 insn_array[] = {
@@ -251,7 +288,12 @@ Insn_6502 insn_array[] = {
     INSN_NULL,
     INSN_NULL,
     /* 0x24 */ {0x24, ins_bit, "BIT", 2, SET_STATUS(Z), 3},
-
+    /* 0x25 */ {0x25, ins_and, "AND", 2, SET_STATUS(N) | SET_STATUS(Z), 3},
+    /* 0x26 */ {0x26, ins_rol, "ROL", 2, SET_STATUS(N) | SET_STATUS(Z) | SET_STATUS(C), 5},
+    INSN_NULL,
+    /* 0x28 */ {0x28, ins_plp, "PLP", 1, NO_STATUS, 4},
+    /* 0x29 */ {0x29, ins_and, "AND", 2, SET_STATUS(N) | SET_STATUS(Z), 2},
+    /* 0x2A */ {0x2A, ins_rol, "ROL", 2, SET_STATUS(N) | SET_STATUS(Z) | SET_STATUS(C), 2},
 
 };
 
@@ -267,6 +309,8 @@ int run_one_cycle(u8 *game_rom) {
                 game_rom[pc + 2],
                 insn_array[game_rom[pc]].status
                 );
+            // this is += in case anyone wants to implement the
+            // edge cases for some instructions that add extra cycles
             cycle_timer += CYC(insn_array[game_rom[pc]].cycles);
         } else {
             printf("Invalid Instruction\n");

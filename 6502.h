@@ -54,4 +54,7 @@ typedef struct {
 #define TO_U16(h, l) ((h << 16) | l)
 #define VOID UNUSED u8 opcode, UNUSED u8 hi, UNUSED u8 lo, UNUSED status_t status
 
+// opcodes
+#include "6502_opcodes.h"
+
 #endif
