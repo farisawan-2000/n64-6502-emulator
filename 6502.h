@@ -40,12 +40,12 @@ typedef u16 status_t;
 #define STATUS_MASK 3
 
 typedef struct {
-	u8 opcode;
-	void (*func)(u8, u8);
-	char nm[4];
-	u8 len;
-	status_t status;
-	u8 cycles;
+    u8 opcode;
+    void (*func)(u8, u8);
+    char nm[4];
+    u8 len;
+    status_t status;
+    u8 cycles;
 } Insn_6502;
 
 #define INSN_NULL {0x00, NULL, "NIL", 0, 0, 0}
